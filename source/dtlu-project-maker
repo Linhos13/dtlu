@@ -1,0 +1,233 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Aug 27 12:48:13 2016
+
+@author: Lukas Linhart
+"""
+
+import sys, getopt, subprocess, re, os
+
+arguments = "hrm:p:"
+longArguments = ["help","recompile","makefile=","project-directory="]
+
+script_dir = None
+
+class FilesSet(set):
+    def __init__(self, project_dir):
+        set.__init__(self)
+        self.path = os.path.join(project_dir,".files")
+        if os.path.isfile(self.path):
+            files_file = open(self.path, "r")
+            for line in files_file:
+                self.add(line.strip())
+            files_file.close()
+
+    def save(self):
+        files_file = open(self.path, "w")
+        for line in self:
+            files_file.write(str.format("{0}\n",line))
+        files_file.close()
+
+class stcc_helper(object):
+    import re
+
+    INPUT_FILE = 0
+    OUTPUT_FILE = 1
+    WORK_DIR = 2
+    ARGUMENTS = 3
+
+    not_supported_by_clang = ["-static-libgcc"]
+    ex_f_o = re.compile(r"(?<=\W)(-f\S*)|(-O\S*)|(-Wno\S*)")
+    ex_spaces = re.compile(r"\s+")
+
+    @staticmethod
+    def remove_flags(arguments):
+        arguments_output, i =stcc_helper.ex_f_o.subn("", arguments)  #remove f and o flags
+
+        #remove not supported flags by clang
+        for not_supported in stcc_helper.not_supported_by_clang:
+            arguments_output = arguments_output.replace(not_supported, "")
+        arguments_output, i = stcc_helper.ex_spaces.subn(" ", arguments_output) #remove whitespaces
+
+        return arguments_output
+
+    @staticmethod
+    def parse_line(line):
+        parts = line.split("},{")
+        parts[0] = parts[0][1:]
+        last = len(parts) - 1
+        parts[last] = parts[last][0:-2]
+        #flags prepare
+        parts[stcc_helper.ARGUMENTS] = stcc_helper.remove_flags(parts[stcc_helper.ARGUMENTS])
+        return parts
+
+    @staticmethod
+    def parse_file(file_path):
+        file_input = open(file_path)
+        list_output = []
+        for line in file_input:
+            line_parsed = stcc_helper.parse_line(line)
+            list_output.append(line_parsed)
+        file_input.close()
+        return list_output
+
+def commandExists(name):
+    for path in os.environ["PATH"].split(os.pathsep):
+        path = path.strip('"')
+        fullpath = os.path.join(path,name)
+        if(os.access(fullpath, os.X_OK)):
+            return True;
+    return False;
+
+def utility(name):
+    if(commandExists(name)):
+        return name
+    elif(os.access(name, os.X_OK)):
+         return name
+    else:
+        print(name + " not installed and is not in current dir")
+        exit(2);
+
+def printHelp():
+    print("Use: \n")
+
+
+def create_directory_tree(dir_path):
+    if not os.path.isdir(dir_path):
+        create_directory_tree(os.path.dirname(dir_path))
+        os.mkdir(dir_path)
+
+
+def set_script_dir():
+    global script_dir
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+
+def get_source_dir(project_dir):
+    proj_file = open(os.path.join(project_dir,".project"),"r")
+    source_dir = proj_file.readline().strip()
+    proj_file.close()
+    return source_dir;
+
+
+
+def create_compile_script(project_dir):
+    if(not commandExists("clang")):
+        print("clang not installed")
+        exit(2);
+    CC = "clang -c -g"
+    LLVM = "-emit-llvm"
+    stcc_output =  os.path.join(project_dir,".stcc_output")
+    script_recompile = open(os.path.join(project_dir, ".compile.sh"), "w")
+    file_set = FilesSet(project_dir)
+    script_recompile.write("#!/bin/bash\n")
+    stcc_parsed_file = stcc_helper.parse_file(stcc_output)
+    for line_parsed in stcc_parsed_file:
+        if os.path.isabs(line_parsed[stcc_helper.OUTPUT_FILE]):
+            file_output = line_parsed[stcc_helper.OUTPUT_FILE]
+            if(file_output == "/dev/null"):
+                continue;
+        else:
+            file_output = os.path.join(project_dir,line_parsed[stcc_helper.OUTPUT_FILE])
+            create_directory_tree(os.path.dirname(file_output))
+        file_input = line_parsed[stcc_helper.INPUT_FILE]
+        script_recompile.write(str.format("{0} {1} -o {2} {3} {4}\n", CC, file_input, file_output, line_parsed[stcc_helper.ARGUMENTS], LLVM))
+        file_set.add(file_output)
+    script_recompile.close()
+    file_set.save()
+
+#load .project file and run file .compile.sh
+def compile_project(project_dir):
+    source_dir = get_source_dir(project_dir)
+    subprocess.call(["bash", os.path.join(project_dir, ".compile.sh")],cwd=source_dir)
+
+
+def index_functions(project_dir):
+    index_file = open(os.path.join(project_dir,".function_index"), "w")
+    file_set = FilesSet(project_dir)
+    index = []
+    indexer = utility("dtlu-indexer")
+    for f in file_set:
+        output = subprocess.check_output([indexer, f])
+        for func in output.splitlines():
+            index.append(str.format("{0} {1}\n", func.decode("utf-8").strip(), f))
+    index.sort()
+    for line in index:
+        index_file.write(line)
+
+    globals_index_file = open(os.path.join(project_dir,".globals_index"), "w")
+    globals_index = []
+    for f in file_set:
+        output = subprocess.check_output([indexer, f, "-g"])
+        for func in output.splitlines():
+            globals_index.append(str.format("{0} {1}\n", func.decode("utf-8").strip(), f))
+    globals_index.sort()
+    for line in globals_index:
+        globals_index_file.write(line)
+    globals_index_file.close()
+
+def remake_project(project_dir):
+    job_file =  os.path.join(project_dir,".stcc_output")
+    jw = open(job_file, "w")
+    jw.close()
+    stcc_env = os.environ.copy()
+    stcc_env["JOB_FILE"] = job_file
+    stcc_loc = utility("stcc")
+    if(stcc_loc[0] == "."):
+        stcc_loc = os.path.join(script_dir,"stcc")
+    NULL = open(os.devnull,"w")
+    source_dir = get_source_dir(project_dir)
+    makefile = os.path.join(source_dir,"Makefile")
+    subprocess.call(["make","CC=" + stcc_loc, "-f", makefile], env=stcc_env,
+                    cwd=source_dir, stdout=NULL,
+                    stderr=subprocess.STDOUT)
+    create_compile_script(project_dir)
+    NULL.close()
+    compile_project(project_dir)
+    index_functions(project_dir)
+
+
+def make_project(project_dir, makefile):
+    job_file =  os.path.join(project_dir,".stcc_output")
+    proj = open(os.path.join(project_dir, ".project"),"w")
+    source_dir = os.path.dirname(os.path.abspath(makefile))
+    proj.write(str.format("{0}\n", source_dir))
+    proj.close()
+    remake_project(project_dir)
+
+
+def main(argv):
+    set_script_dir()
+    makefile = ""
+    outputDirectory = ""
+    recompile = False
+    try:
+        opt, args = getopt.getopt(argv,arguments,longArguments)
+    except getopt.GetoptError as e:
+        print(str(e))
+        printHelp()
+        sys.exit(1)
+    for o, a in opt:
+        if o in ("-h", "--help"):
+            printHelp()
+            sys.exit()
+        elif o in ("-m", "--makefile"):
+            makefile = a
+        elif o in ("-p", "--project-directory"):
+            outputDirectory = a
+        elif o in ("-r", "--recompile"):
+            recompile = True
+        else:
+            assert False, "unhandled option"
+    outputDirectory = os.path.abspath(outputDirectory)
+    if makefile != "" and outputDirectory != "" and not recompile:
+        make_project(outputDirectory, makefile)
+    elif makefile == "" and outputDirectory != "" and recompile:
+        remake_project(outputDirectory)
+    else:
+        help()
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
