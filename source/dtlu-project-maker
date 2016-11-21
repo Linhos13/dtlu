@@ -6,12 +6,17 @@ Created on Sat Aug 27 12:48:13 2016
 @author: Lukas Linhart
 """
 
-import sys, getopt, subprocess, re, os
+from __future__ import print_function
+import sys, getopt, subprocess, re, os, shlex, time
 
-arguments = "hrm:p:"
-longArguments = ["help","recompile","makefile=","project-directory="]
+arguments = "hrm:p:i"
+longArguments = ["help","recompile","makefile=","project-directory=,index"]
 
 script_dir = None
+
+REAL_CC = os.getenv('REAL_CC', "gcc")
+LLVM_CC = os.getenv('LLVM_CC', "clang")
+
 
 class FilesSet(set):
     def __init__(self, project_dir):
@@ -90,8 +95,12 @@ def utility(name):
         exit(2);
 
 def printHelp():
-    print("Use: \n")
-
+    print("Use: dtlu-project-maker -p path/to/project_dir [-m path/to/Makefile -r -i]\nEnviroment variables:\n\tREAL_CC\tDefault - gcc\n\tLLVM_CC\tDefault - clang")
+    print("Examples:")
+    print("\tdtlu-project-maker -p project_dir -m Makefile")
+    print("\t\t make, compile and index project")
+    print("\tdtlu-project-maker -p project_dir -i")
+    print("\t\t only index files by file .files in project_dir ")
 
 def create_directory_tree(dir_path):
     if not os.path.isdir(dir_path):
@@ -111,59 +120,79 @@ def get_source_dir(project_dir):
 
 
 
-def create_compile_script(project_dir):
-    if(not commandExists("clang")):
+def compile_project(project_dir):
+    if(not commandExists(LLVM_CC)):
         print("clang not installed")
         exit(2);
-    CC = "clang -c -g"
+    CC = LLVM_CC + " -c -g"
     LLVM = "-emit-llvm"
     stcc_output =  os.path.join(project_dir,".stcc_output")
-    script_recompile = open(os.path.join(project_dir, ".compile.sh"), "w")
+    #script_recompile = open(os.path.join(project_dir, ".compile.sh"), "w")
     file_set = FilesSet(project_dir)
-    script_recompile.write("#!/bin/bash\n")
+    #script_recompile.write("#!/bin/bash\n")
     stcc_parsed_file = stcc_helper.parse_file(stcc_output)
+    compile_completed = True
+    source_dir = get_source_dir(project_dir)
+    i = 1;
+    c = len(stcc_parsed_file)
     for line_parsed in stcc_parsed_file:
         if os.path.isabs(line_parsed[stcc_helper.OUTPUT_FILE]):
             file_output = line_parsed[stcc_helper.OUTPUT_FILE]
-            if(file_output == "/dev/null"):
-                continue;
         else:
             file_output = os.path.join(project_dir,line_parsed[stcc_helper.OUTPUT_FILE])
             create_directory_tree(os.path.dirname(file_output))
         file_input = line_parsed[stcc_helper.INPUT_FILE]
-        script_recompile.write(str.format("{0} {1} -o {2} {3} {4}\n", CC, file_input, file_output, line_parsed[stcc_helper.ARGUMENTS], LLVM))
+        if(file_output == "/dev/null"):
+            print(file_input + " output file is /dev/null, not compile")
+            print(str.format("{0} {1}/{2}       \r","compiled", i, c ), end="")
+            i += 1
+            continue;
+        command = str.format("{0} {1} -o {2} {3} {4}", CC, file_input, file_output, line_parsed[stcc_helper.ARGUMENTS], LLVM)
+        command_splited = shlex.split(command)
+        p = subprocess.Popen(command_splited, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=source_dir)
+        p.wait()
+        if p.returncode != 0:
+            out, err = p.communicate()
+            print(str.format("{0} {1} {2}", file_input, "not compiled,",  p.returncode))
+            print(out)
+            print(err)
+            compile_completed = False
+        print(str.format("{0} {1}/{2}       \r","compiled", i, c ), end="")
         file_set.add(file_output)
-    script_recompile.close()
+        i += 1
+    print("")
     file_set.save()
-
-#load .project file and run file .compile.sh
-def compile_project(project_dir):
-    source_dir = get_source_dir(project_dir)
-    subprocess.call(["bash", os.path.join(project_dir, ".compile.sh")],cwd=source_dir)
+    if not compile_completed:
+        print("Compile ends with error")
+        sys.exit(2)
 
 
 def index_functions(project_dir):
-    index_file = open(os.path.join(project_dir,".function_index"), "w")
-    file_set = FilesSet(project_dir)
-    index = []
     indexer = utility("dtlu-indexer")
-    for f in file_set:
-        output = subprocess.check_output([indexer, f])
-        for func in output.splitlines():
-            index.append(str.format("{0} {1}\n", func.decode("utf-8").strip(), f))
-    index.sort()
-    for line in index:
-        index_file.write(line)
-
+    file_set = FilesSet(project_dir)
+    index_file = open(os.path.join(project_dir,".function_index"), "w")
+    index = []
     globals_index_file = open(os.path.join(project_dir,".globals_index"), "w")
     globals_index = []
     for f in file_set:
-        output = subprocess.check_output([indexer, f, "-g"])
-        for func in output.splitlines():
-            globals_index.append(str.format("{0} {1}\n", func.decode("utf-8").strip(), f))
+        try:
+            output = subprocess.check_output([indexer, f])
+            for func in output.splitlines():
+                index.append(str.format("{0} {1}\n", func.decode("utf-8").strip(), f))
+            g_output = subprocess.check_output([indexer, f, "-g"])
+            for func in g_output.splitlines():
+                globals_index.append(str.format("{0} {1}\n", func.decode("utf-8").strip(), f))
+        except subprocess.CalledProcessError as cpe:
+            print(cpe.output)
+            print("{0} ends with {1}".format(indexer,cpe.returncode))
+            print("{0} not indexed".format(f))
+    index.sort()
     globals_index.sort()
+    for line in index:
+        index_file.write(line)
     for line in globals_index:
         globals_index_file.write(line)
+    index_file.close()
     globals_index_file.close()
 
 def remake_project(project_dir):
@@ -172,18 +201,25 @@ def remake_project(project_dir):
     jw.close()
     stcc_env = os.environ.copy()
     stcc_env["JOB_FILE"] = job_file
+    stcc_env["REAL_CC"] = REAL_CC
     stcc_loc = utility("stcc")
     if(stcc_loc[0] == "."):
         stcc_loc = os.path.join(script_dir,"stcc")
-    NULL = open(os.devnull,"w")
     source_dir = get_source_dir(project_dir)
     makefile = os.path.join(source_dir,"Makefile")
-    subprocess.call(["make","CC=" + stcc_loc, "-f", makefile], env=stcc_env,
+    print("Running make")
+    NULL = open(os.devnull,"w")
+    try:
+        subprocess.call(["make","CC=" + stcc_loc, "-f", makefile], env=stcc_env,
                     cwd=source_dir, stdout=NULL,
                     stderr=subprocess.STDOUT)
-    create_compile_script(project_dir)
+    except subprocess.CalledProcessError as cpe:
+        print("Make ends with {0}".format(cpe.returncode))
+        sys.exit(3)
     NULL.close()
+    print("Make complete\nCompiling project")
     compile_project(project_dir)
+    print("Compile complete\nIndexing project")
     index_functions(project_dir)
 
 
@@ -198,9 +234,10 @@ def make_project(project_dir, makefile):
 
 def main(argv):
     set_script_dir()
-    makefile = ""
-    outputDirectory = ""
+    makefile = None
+    outputDirectory = None
     recompile = False
+    only_index = False
     try:
         opt, args = getopt.getopt(argv,arguments,longArguments)
     except getopt.GetoptError as e:
@@ -217,17 +254,29 @@ def main(argv):
             outputDirectory = a
         elif o in ("-r", "--recompile"):
             recompile = True
+        elif o in ("-i","--index"):
+            only_index = True
         else:
             assert False, "unhandled option"
-    outputDirectory = os.path.abspath(outputDirectory)
-    if makefile != "" and outputDirectory != "" and not recompile:
-        make_project(outputDirectory, makefile)
-    elif makefile == "" and outputDirectory != "" and recompile:
-        remake_project(outputDirectory)
-    else:
-        help()
-        sys.exit(1)
 
+    if not outputDirectory:
+        print("missing -p project_directory")
+        printHelp()
+        sys.exit(1)
+    outputDirectory = os.path.abspath(outputDirectory)
+    if not os.path.isdir(outputDirectory):
+        print(outputDirectory + " not exist or is not a directory")
+        printHelp()
+        sys.exit(1)
+    if makefile and outputDirectory and not recompile:
+        make_project(outputDirectory, makefile)
+    elif makefile and outputDirectory and recompile:
+        remake_project(outputDirectory)
+    elif outputDirectory and only_index and not recompile and not makefile:
+        index_functions(outputDirectory)
+    else:
+        printHelp()
+        sys.exit(1)
 
 if __name__ == "__main__":
     main(sys.argv[1:])

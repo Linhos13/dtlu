@@ -19,7 +19,7 @@
 
 using namespace llvm;
 
-ModuleCutter::ModuleCutter(std::string name, ProjectLinker* parent) : name(name), parent(parent)
+ModuleCutter::ModuleCutter(std::string name, ProjectLinker* parent) : parent(parent), name(name)
 {
     SMDiagnostic error;
     std::unique_ptr<Module> m = parseIRFile(StringRef(name), error, getGlobalContext());
