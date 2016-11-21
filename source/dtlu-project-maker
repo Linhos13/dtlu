@@ -14,7 +14,7 @@ longArguments = ["help","recompile","makefile=","project-directory=,index"]
 
 script_dir = None
 
-REAL_CC = os.getenv('REAL_CC', "gcc")
+REAL_CC = os.getenv('REAL_CC', "cc")
 LLVM_CC = os.getenv('LLVM_CC', "clang")
 
 
@@ -95,7 +95,7 @@ def utility(name):
         exit(2);
 
 def printHelp():
-    print("Use: dtlu-project-maker -p path/to/project_dir [-m path/to/Makefile -r -i]\nEnviroment variables:\n\tREAL_CC\tDefault - gcc\n\tLLVM_CC\tDefault - clang")
+    print("Use: dtlu-project-maker -p path/to/project_dir [-m path/to/Makefile -r -i]\nEnviroment variables:\n\tREAL_CC\tDefault - cc\n\tLLVM_CC\tDefault - clang")
     print("Examples:")
     print("\tdtlu-project-maker -p project_dir -m Makefile")
     print("\t\t make, compile and index project")
