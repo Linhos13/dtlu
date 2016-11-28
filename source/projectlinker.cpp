@@ -33,10 +33,9 @@ ProjectLinker::ProjectLinker(std::string main_module, std::string project_dir, s
     std::string gindex_file = joinPath(std::string(project_dir), ".globals_index");
     globalMap = new LinkerSupports::SymbolMap(gindex_file);
     this->llvm_linker = llvm_linker;
-    mainModuleName = main_module;
     ModuleCutter* main = getOrLoadModule(main_module);
     main->addAllDefinedFunctions();
-
+    mainModule = main;
     processModules();
 
 }
@@ -80,6 +79,8 @@ void ProjectLinker::processModules()
 
 void ProjectLinker::useExternalFunction(std::string name)
 {
+    if(mainModule->hasFunction(name))
+        return;
     std::vector<std::string*>* files = functionMap->getFiles(name);
     if(!files)
     {
@@ -103,6 +104,8 @@ void ProjectLinker::useExternalFunction(std::string name)
 
 void ProjectLinker::useExternalGlobal(std::string name)
 {
+    if(mainModule->hasGlobal(name))
+        return;
     std::vector<std::string*>* files = globalMap->getFiles(name);
     if(!files)
     {

@@ -155,7 +155,7 @@ namespace LinkerSupports
         for (auto it = gl.begin(); it != gl.end(); ++it)
         {
             auto &global = *it;
-            if(global.hasInitializer() && !global.hasPrivateLinkage() && !global.hasInternalLinkage())
+            if(isInicializedAndGlobalAccessible(&global))
                 l.push_back(&global);
         }
         return l;
@@ -220,5 +220,10 @@ namespace LinkerSupports
     bool isDefined(llvm::Function* function)
     {
         return function->begin() != function->end();
+    }
+
+    bool isInicializedAndGlobalAccessible(llvm::GlobalVariable* global)
+    {
+        return global->hasInitializer() && !global->hasPrivateLinkage() && !global->hasInternalLinkage();
     }
 }

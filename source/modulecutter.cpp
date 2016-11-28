@@ -263,6 +263,23 @@ void ModuleCutter::writeToBC(std::string fileName /* = "" */)
     os.flush();
 }
 
+bool ModuleCutter::hasFunction(std::string name)
+{
+    Function* f = module->getFunction(StringRef(name));
+    if(!f)
+        return false;
+    if(!f->hasPrivateLinkage() && !f->hasInternalLinkage())
+        return LinkerSupports::isDefined(f);
+}
+
+bool ModuleCutter::hasGlobal(std::string name)
+{
+    GlobalVariable* g = module->getGlobalVariable(StringRef(name));
+    if(!g)
+        return false;
+    return LinkerSupports::isInicializedAndGlobalAccessible(g);
+}
+
 ModuleCutter::~ModuleCutter()
 {
     delete module;

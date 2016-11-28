@@ -48,6 +48,8 @@ class ModuleCutter
         bool hasEmptyQueues(){ return functionProcessQueue.empty() && globalProcessQueue.empty();}
         void cutUnused();
         void writeToBC(std::string fileName = "");
+        bool hasFunction(std::string name);
+        bool hasGlobal(std::string name);
         virtual ~ModuleCutter();
 };
 

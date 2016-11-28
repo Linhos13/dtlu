@@ -28,7 +28,7 @@ class ProjectLinker
         std::set<std::string> notFoundFunctions;
         std::set<std::string> notFoundGlobals;
         std::string llvm_linker;
-        std::string mainModuleName;
+        ModuleCutter* mainModule;
         //functions
         ModuleCutter* findModuleByName(std::string file_name);
         void printNotFoundFunctions();

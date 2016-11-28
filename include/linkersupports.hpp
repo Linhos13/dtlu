@@ -23,6 +23,7 @@ namespace LinkerSupports
     std::list<llvm::GlobalVariable*> getUsedGlobals(llvm::Function *function);
     std::list<llvm::GlobalAlias*> getUsedGlobalAliases(llvm::Function *function);
     std::list<llvm::GlobalVariable*> recursiveGlobals(llvm::Value* op);
+    bool isInicializedAndGlobalAccessible(llvm::GlobalVariable* global);
     bool isDefined(llvm::Function* function);
 }
 #endif
