@@ -127,9 +127,7 @@ def compile_project(project_dir):
     CC = LLVM_CC + " -c -g"
     LLVM = "-emit-llvm"
     stcc_output =  os.path.join(project_dir,".stcc_output")
-    #script_recompile = open(os.path.join(project_dir, ".compile.sh"), "w")
     file_set = FilesSet(project_dir)
-    #script_recompile.write("#!/bin/bash\n")
     stcc_parsed_file = stcc_helper.parse_file(stcc_output)
     compile_completed = True
     source_dir = get_source_dir(project_dir)

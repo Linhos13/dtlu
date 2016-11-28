@@ -3,8 +3,12 @@
 #include "modulecutter.hpp"
 #include <iostream>
 #include <fstream>
+#include <stdexcept>
 #include <algorithm>
 #include <stdlib.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+
 
 ModuleCutter* ProjectLinker::getOrLoadModule(std::string file_name)
 {
@@ -19,6 +23,11 @@ ModuleCutter* ProjectLinker::getOrLoadModule(std::string file_name)
 
 ProjectLinker::ProjectLinker(std::string main_module, std::string project_dir, std::string llvm_linker)
 {
+    struct stat info;
+    if(stat(project_dir.c_str(), &info ) != 0)
+        throw std::invalid_argument("Could not access to project directory " + project_dir);
+    else if(!S_ISDIR(info.st_mode))
+        throw std::invalid_argument(project_dir + " is not a directory");
     std::string findex_file = joinPath(std::string(project_dir), ".function_index");
     functionMap = new LinkerSupports::SymbolMap(findex_file);
     std::string gindex_file = joinPath(std::string(project_dir), ".globals_index");
@@ -27,6 +36,7 @@ ProjectLinker::ProjectLinker(std::string main_module, std::string project_dir, s
     mainModuleName = main_module;
     ModuleCutter* main = getOrLoadModule(main_module);
     main->addAllDefinedFunctions();
+
     processModules();
 
 }
