@@ -42,6 +42,7 @@ class ProjectLinker
         void useExternalFunction(std::string);
         void useExternalGlobal(std::string);
         void linkModulesToFile(std::string& file);
+        ModuleCutter* getMainModule(){ return mainModule; }
         void printNotFound();
         virtual ~ProjectLinker();
 };

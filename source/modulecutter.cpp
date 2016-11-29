@@ -155,6 +155,10 @@ void ModuleCutter::cutFunctions()
         {
             unused.push_back(f.getName().str());
         }
+        else
+        {
+            removeRedefindedFunction(&f);
+        }
     }
     for(auto un : unused)
     {
@@ -175,11 +179,13 @@ void ModuleCutter::cutGlobals()
     for(auto it = module->global_begin(); it != module->global_end(); ++it)
     {
         auto &f = *it;
-        //std::cerr << name << " "  << f.getName().str() << std::endl;
         if(usedGlobals.find(&f) == usedGlobals.end())
         {
-            //std::cerr << name << " not use "  << f.getName().str() << std::endl;
             unused.push_back(f.getName().str());
+        }
+        else
+        {
+            removeRedefindedGlobal(&f);
         }
     }
     for(auto un : unused)
@@ -187,7 +193,6 @@ void ModuleCutter::cutGlobals()
 
         module->getGlobalVariable(un, true)->eraseFromParent();
     }
-
 }
 
 void ModuleCutter::checkGlobal(GlobalVariable* global)
@@ -223,6 +228,25 @@ void ModuleCutter::recursiveGlobals(User* user)
         }
     }
 }
+
+void ModuleCutter::removeRedefindedFunction(Function* f)
+{
+    std::string name = f->getName().str();
+    if(parent->getMainModule() != this && hasFunction(name) && parent->getMainModule()->hasFunction(name))
+    {
+        f->deleteBody();
+    }
+}
+
+void ModuleCutter::removeRedefindedGlobal(GlobalVariable* g)
+{
+    std::string name = g->getName().str();
+    if(parent->getMainModule() != this && hasGlobal(name) && parent->getMainModule()->hasGlobal(name))
+    {
+        g->setInitializer(NULL);
+    }
+}
+
 
 void ModuleCutter::recursiveFunctions(User* user)
 {

@@ -37,6 +37,8 @@ class ModuleCutter
          void cutGlobals();
          void recursiveGlobals(llvm::User* user);
          void recursiveFunctions(llvm::User* user);
+         void removeRedefindedFunction(llvm::Function* f);
+         void removeRedefindedGlobal(llvm::GlobalVariable* g);
     public:
         ModuleCutter(std::string name, ProjectLinker* parent);
         std::string getName() {return this->name;}
