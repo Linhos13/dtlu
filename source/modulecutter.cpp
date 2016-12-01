@@ -294,6 +294,7 @@ bool ModuleCutter::hasFunction(std::string name)
         return false;
     if(!f->hasPrivateLinkage() && !f->hasInternalLinkage())
         return LinkerSupports::isDefined(f);
+    return false;
 }
 
 bool ModuleCutter::hasGlobal(std::string name)
